@@ -16,7 +16,7 @@ url = 'https://www.owgr.com/current-world-ranking'
 options = webdriver.ChromeOptions()
 options.page_load_strategy = 'normal' 
 
-#options.add_argument("--headless")
+options.add_argument("--headless")
 driver = Chrome(options=options)
 driver.implicitly_wait(1)
 
@@ -28,7 +28,7 @@ time.sleep(1)
 cookies = driver.find_element(By.CLASS_NAME, 'regularButton_button__n3ye_')
 ActionChains(driver).move_to_element(cookies).click(cookies).perform()
 
-#Lista con los jugadores (4700), se vuelve a pasar el html/soup para que coja el html por cada una de las páginas
+#Lista con los jugadores, se vuelve a pasar el html/soup para que coja el html por cada una de las páginas
 b = 1
 urls_list = []
 while b > 0:
