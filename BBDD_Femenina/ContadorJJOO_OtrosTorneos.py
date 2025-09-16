@@ -1,40 +1,40 @@
 import pandas as pd
 import unicodedata
 
-# --- Función para normalizar nombres ---
+# Función para normalizar nombres
 def normalizar(nombre):
     if isinstance(nombre, str):
         nombre = unicodedata.normalize('NFKD', nombre).encode('ascii', 'ignore').decode('utf-8')
         return nombre.lower().replace(".", "").strip()
     return ""
 
-# --- Cargar archivos ---
+# Cargar archivos
 df_jugadores = pd.read_excel("jugadoras.xlsx")
 df_torneos = pd.read_csv("torneos.csv", sep=';')
 
-# --- Normalizar nombres ---
+# Normalizar nombres
 df_jugadores["nombre_normalizado"] = df_jugadores["Nombre"].apply(normalizar)
 df_torneos["jugador_normalizado"] = df_torneos["Jugadora"].apply(normalizar)
 
-# --- Juegos Olimpicos: Tour == IGF ---
+# Juegos Olimpicos: Tour == IGF
 olimpicos = df_torneos[df_torneos["Tour"] == "IGF"] \
     .drop_duplicates(subset=["jugador_normalizado"]) \
     .assign(Juegos_Olimpicos=1)[["jugador_normalizado", "Juegos_Olimpicos"]]
 
-# --- Nº Otros Torneos: excluir LPGA, IGF y los que empiezan por "Previous"
+# Nº Otros Torneos: excluir LPGA, IGF y los que empiezan por "Previous"
 otros_torneos = df_torneos[
     ~df_torneos["Tour"].isin(["LPGA", "IGF"]) &
     ~df_torneos["Tour"].str.startswith("Previous", na=False)
 ].groupby("jugador_normalizado").size().reset_index(name="Nº Otros Torneos")
 
-# --- Nº LPGA ---
+# Nº LPGA
 pgat_torneos = df_torneos[df_torneos["Tour"] == "LPGA"] \
     .groupby("jugador_normalizado").size().reset_index(name="Nº PGAT")
 
-# --- Total Torneos (todos los tours) ---
+# Total Torneos (todos los tours) 
 total_torneos = df_torneos.groupby("jugador_normalizado").size().reset_index(name="Total Torneos")
 
-# --- Unir todo al archivo de jugadores ---
+# Unir todo al archivo de jugadores
 df_final = df_jugadores.merge(olimpicos, left_on="nombre_normalizado", right_on="jugador_normalizado", how="left")
 df_final.drop(columns=["jugador_normalizado"], inplace=True, errors="ignore")
 
@@ -76,4 +76,5 @@ df_final.drop(columns=["jugador_normalizado"], inplace=True, errors="ignore")
 # Guardar resultado
 df_final.to_excel("jugadores_con_torneos_completo2.xlsx", index=False)
 print("Archivo generado: jugadores_con_torneos_completo.xlsx")
+
 
