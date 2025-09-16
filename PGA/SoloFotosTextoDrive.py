@@ -19,9 +19,10 @@ for usuario in os.listdir(ORIGEN):
                     destino_archivo = os.path.join(destino_usuario, archivo)
                     if not os.path.exists(destino_archivo):
                         shutil.copy2(ruta_archivo, destino_archivo)
-                        print(f'   ✅ Copiado: {subcarpeta}/{archivo}')
+                        print(f' Copiado: {subcarpeta}/{archivo}')
                     else:
-                        print(f'   ⚠️ Ya existe: {subcarpeta}/{archivo}')
+                        print(f'Ya existe: {subcarpeta}/{archivo}')
         print('---')
 
-print("✅ Copia completada. Solo fotos y textos están en la carpeta para Drive.")
+print("Copia completada. Solo fotos y textos están en la carpeta para Drive.")
+
