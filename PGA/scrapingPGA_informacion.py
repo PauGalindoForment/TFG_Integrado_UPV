@@ -125,31 +125,7 @@ for perfil in perfiles[200:]:
             print("El jugador no tiene Instagram")
     except AttributeError:
         instagram_list.append("El jugador no tiene Instagram")
-        print("El jugador no tiene Instagram")
-
-    # Cargar página results para obtener el nuevo html
-    #driver.get(perfil)
-    
-    # Obtener HTML
-    #html = driver.page_source
-    #soup = BeautifulSoup(html, 'html.parser')
-
-    # Apartado results (2024)
-    #try:
-        #results = driver.find_element(By.XPATH, "//button[@aria-label='Results']")
-        #ActionChains(driver).move_to_element(results).click(results).perform()
-        #time.sleep(random.randint(3,5))
-    #except:
-        # eventos_perf.append('-')
-        # victorias_perf.append('-')
-        # segundo_perf.append('-')
-        # top10_perf.append('-')
-        # top25_perf.append('-')
-        # corteshechos_perf.append('-')
-        # corteseliminado_perf.append('-')
-        # abandonos_perf.append('-')
-        # dinero_perf.append('-')
-        # continue     
+        print("El jugador no tiene Instagram")   
     try:
         anyo_2024 = driver.find_element(By.XPATH, "//button[@aria-label='Year']")
         ActionChains(driver).move_to_element(anyo_2024).click(anyo_2024).perform()
@@ -242,8 +218,6 @@ for perfil in perfiles[200:]:
     dinero_perf.append(dinero_2024)
 
 # Crear DataFrame
-#columnas = ['Jugador', 'Edad', 'Año profesional', 'Lugar nacimiento', 'Universidad', 'Instagram', 'Foto', 'Eventos PGA 2024', 'Victorias PGA 2024', '2a posiciónn PGA 2024',
-#            'Top 10 PGA 2024', 'Top 25 PGA 2024', 'Cortes pasados PGA 2024', 'Cortes no pasados PGA 2024', 'Abandonos PGA 2024', 'Dinero oficial PGA 2024']
 df_jugador = pd.DataFrame({'Jugador': nombre_perf, 'Edad': edad_perf, 'Año profesional': turned_pro_perf, 'Lugar nacimiento': nacimiento_perf, 'Universidad': universidad_perf, 'Instagram': instagram_list, 
                             'Foto': img_url_perf, 'Eventos PGA 2024': eventos_perf, 'Victorias PGA 2024': victorias_perf, '2a posiciónn PGA 2024': segundo_perf, 'Top 10 PGA 2024': top10_2024, 
                             'Top 25 PGA 2024': top25_perf, 'Cortes pasados PGA 2024': corteshechos_perf, 'Cortes no pasados PGA 2024': corteseliminado_perf, 'Abandonos PGA 2024': abandonos_perf, 
@@ -254,3 +228,4 @@ df_jugador.to_csv(csv_informacion_jugador, index=False)
     
 
     
+
