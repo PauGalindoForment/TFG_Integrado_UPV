@@ -8,7 +8,6 @@ from bs4 import BeautifulSoup
 
 # Configuración del navegador
 options = webdriver.ChromeOptions()
-# options.add_argument('--headless')  # opcional sin ventana
 options.page_load_strategy = 'normal'
 driver = Chrome(options=options)
 driver.implicitly_wait(5)
@@ -47,3 +46,4 @@ names = [tag.text.strip() for tag in name_tags if tag.text.strip()]
 df = pd.DataFrame(names, columns=["Jugadora"])
 df.to_excel("nombres_jugadoras.xlsx", index=False)
 print(f"{len(df)} nombres guardados en 'nombres_jugadoras.xlsx'")
+
