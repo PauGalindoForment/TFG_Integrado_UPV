@@ -72,8 +72,7 @@ def descarga_posts_entre_fechas_incluidas(str_profile, dt_fecha_inicio, dt_fecha
 
     lista_filas = []
     n = 0
-    publicaciones_antiguas = 0  # Contador para las publicaciones más antiguas
-
+    publicaciones_antiguas = 0 
     session = L.context._session 
 
     # Iteramos por las publicaciones
@@ -203,10 +202,8 @@ INICIO = datetime(2024, 1, 1)
 FINAL = datetime(2024, 12, 31)
 
 # LOGIN
-user = 'zaqvho'
-#user = 'pgf220399'
-#user = 'pauupv1'
-password = 'Qwerty88!!!'
+user = '#####'
+password = '#####'
 loader = Instaloader(compress_json=False, save_metadata=False)
 loader.context._session.headers['User-Agent'] = default_user_agent()
 
@@ -285,5 +282,6 @@ with open(ruta_archivo_destino, 'a', newline='', encoding='utf-8') as destino_cs
                     break
 
         print('Descarga de posts de todos los jugadores de la tanda finalizada')
+
 
 print("Cuentas de Instagram obtenidas:", max_point - min_point)
