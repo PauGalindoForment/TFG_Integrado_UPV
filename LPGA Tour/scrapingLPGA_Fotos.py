@@ -16,7 +16,6 @@ url = 'https://www.lpga.com/athletes/directory'
 
 # Configuración de Selenium
 options = webdriver.ChromeOptions()
-#options.add_argument('--headless')  # Activa si quieres sin ventana
 options.page_load_strategy = 'normal'
 
 driver = Chrome(options=options)
@@ -85,3 +84,4 @@ for img in img_tags:
         print(f"Descargada: {filename}")
     except Exception as e:
         print(f"Error al descargar {img_url}: {e}")
+
