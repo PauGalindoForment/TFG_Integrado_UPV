@@ -1,0 +1,942 @@
+---
+title: "ModeloMixto"
+author: "PauGalindo"
+date: "2025-07-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(lmerTest)
+library(ggplot2)
+library(lattice)
+library(ggpubr)
+library(moments)
+library(sjPlot)
+library(car)
+library(lmtest)
+library(corrplot)
+library(descr)
+library(psych)
+library(dplyr)
+library(gridExtra)
+library(kableExtra)
+library(Matrix)
+library(lme4)
+library(texreg)
+library(lmeresampler)
+library(rsample)
+library(flextable)
+library(xtable)
+```
+
+# Carga y preprocesamiento de datos
+
+```{r carga-datos}
+datos <- readxl::read_excel("C:/NAS_PAU/TFG/BBDD_Mixta/DatasetMixto.xlsx")
+
+datos$usuario <- as.factor(datos$usuario)
+
+# Día de la semana (de número a nombre)
+datos$dia_semana <- factor(datos$dia_semana,
+                           levels = 1:7,
+                           labels = c("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"))
+
+# Fin de semana (binaria)
+datos$fin_de_semana <- factor(datos$fin_de_semana, levels = c(0,1), labels = c("No", "Si"))
+
+# Imagen: carrusel, selfie, otro golfista
+datos$carrusel <- factor(datos$carrusel, levels = c(0,1), labels = c("No", "Si"))
+datos$selfie <- factor(datos$selfie, levels = c(0,1), labels = c("No", "Si"))
+datos$otro_golfista <- factor(datos$otro_golfista, levels = c(0,1), labels = c("No", "Si"))
+
+# Imagen: campo de golf e indoor
+datos$campo_golf <- factor(datos$campo_golf, levels = c(0,1), labels = c("No", "Si"))
+datos$indoor <- factor(datos$indoor, levels = c(0,1), labels = c("No", "Si"))
+
+# Emoción dominante en la imagen
+datos$emocion <- factor(datos$emocion)
+datos$emocion <- relevel(datos$emocion, ref = "neutral")  
+
+# Género
+datos$genero <- factor(datos$genero, levels = c(0,1), labels = c("Femenino", "Masculino"))
+# Juegos Olímpicos
+datos$juegos_olimpicos <- factor(datos$juegos_olimpicos, levels = c(0,1), labels = c("No", "Si"))
+
+# Publicación durante un Major
+datos$es_major <- factor(datos$es_major, levels = c(0,1), labels = c("No", "Si"))
+
+# Otras binarias
+datos$es_usa <- factor(datos$es_usa, levels = c(0,1), labels = c("No", "Si"))
+
+#Filtramos para eliminar las publicaciones con likes -1 y comentarios -1:
+
+datos.likes <- datos %>% filter(n_likes >= 0)
+datos.comentarios <- datos%>% filter(n_comentarios >= 0)
+```
+
+# Análisis exploratorio
+
+## Variables categóricas y likes
+
+```{r boxplot-likes-categoricas, fig.width=15, fig.height=15}
+par(mfrow = c(4, 4))
+vars_categoricas <- c(
+  "carrusel", "selfie", "otro_golfista",
+  "campo_golf", "indoor","es_usa", "genero", "emocion", "dia_semana",
+  "fin_de_semana", "juegos_olimpicos", "es_major"
+)
+for (var in vars_categoricas) {
+  boxplot(n_likes ~ get(var), data = datos.likes, main = paste("Likes por", var), xlab = var, outline = FALSE)
+}
+for (var in vars_categoricas) {
+  boxplot(n_likes ~ get(var), data = datos.comentarios, main = paste("Comentarios por", var), xlab = var, outline = FALSE)
+}
+par(mfrow = c(1, 1))
+```
+```{r}
+# =========================================================
+# Boxplots categóricos -> 3 variables por hoja (vertical)
+# - Un PDF por página (p01, p02, ...)
+# - CSV con resumen por variable y nivel (N/mediana/IQR/media/SD)
+# - Bloque LaTeX auto con "(i/N)" y fuente
+# - Estilo gris, sin outliers, mediana gruesa
+# =========================================================
+
+# ---- Configuración carpeta de salida ----
+out_dir <- "figuras_boxplots"
+if (!dir.exists(out_dir)) dir.create(out_dir, showWarnings = FALSE)
+
+present_vars <- function(vars, data) intersect(vars, names(data))
+
+# ---- Utilidades ----
+# Divide un vector en grupos de tamaño n (3 por página)
+split_in_chunks <- function(x, n = 3) {
+  if (!length(x)) return(list())
+  split(x, ceiling(seq_along(x) / n))
+}
+
+# Resumen por variable categórica y nivel
+group_summary <- function(df, var, response) {
+  x <- as.factor(df[[var]])
+  y <- df[[response]]
+  ok <- is.finite(y) & !is.na(x)
+  x <- droplevels(x[ok]); y <- y[ok]
+  if (!length(y)) {
+    return(data.frame(
+      variable = var, nivel = NA_character_, n = 0,
+      median = NA_real_, IQR = NA_real_, mean = NA_real_, sd = NA_real_
+    ))
+  }
+  tapply_idx <- split(seq_along(y), x)
+  stats <- lapply(names(tapply_idx), function(lvl) {
+    idx <- tapply_idx[[lvl]]
+    yy <- y[idx]
+    data.frame(
+      variable = var,
+      nivel    = lvl,
+      n        = length(yy),
+      median   = median(yy, na.rm = TRUE),
+      IQR      = IQR(yy, na.rm = TRUE),
+      mean     = mean(yy, na.rm = TRUE),
+      sd       = sd(yy, na.rm = TRUE)
+    )
+  })
+  do.call(rbind, stats)
+}
+
+# Dibuja 3 boxplots verticales en 1 página (PDF único)
+export_boxplots_onepage <- function(file, data, response, vars3,
+                                    width = 8, height = 11.5,
+                                    main_prefix = NULL) {
+  if (is.null(main_prefix)) main_prefix <- response
+  pdf(file, width = width, height = height); on.exit(dev.off(), add = TRUE)
+
+  op <- par(no.readonly = TRUE); on.exit(par(op), add = TRUE)
+  par(mfrow = c(3,1), mar = c(4.5,4,3,1), mgp = c(2.2,0.8,0),
+      cex.axis = 0.9, cex.lab = 0.95)
+
+  y <- data[[response]]
+  for (v in vars3) {
+    x <- as.factor(data[[v]])
+    if (all(is.na(y)) || all(is.na(x))) {
+      plot.new(); title(main = sprintf("%s por %s (sin datos)", main_prefix, v))
+      next
+    }
+    boxplot(y ~ x,
+            main     = sprintf("%s por %s", main_prefix, v),
+            xlab     = v, ylab = response,
+            outline  = FALSE,
+            las      = 1,
+            col      = "gray90",
+            border   = "black",
+            boxwex   = 0.6,
+            lwd      = 1.2,
+            medlwd   = 2.5,
+            whisklwd = 1,
+            staplelty = 1, staplewex = 0.5)
+    grid(nx = NA, ny = NULL, lty = 3)
+  }
+  invisible(TRUE)
+}
+
+# Exporta muchos PDFs (3 variables/página) y acumula resumen por variable/nivel
+export_many_pdfs <- function(file_stub, data, response, vars,
+                             main_prefix = NULL, chunk_size = 3,
+                             width = 8, height = 11.5) {
+  vars <- present_vars(vars, data)
+  chunks <- split_in_chunks(vars, n = chunk_size)
+  if (!length(chunks)) {
+    warning("Sin variables para: ", file_stub)
+    return(invisible(list(total = 0, pdfs = character(0), summary = NULL)))
+    }
+
+  pdf_names <- character(0)
+  summary_acc <- list()
+
+  for (i in seq_along(chunks)) {
+    file_i <- file.path(out_dir, sprintf("%s_p%02d.pdf", file_stub, i))
+    export_boxplots_onepage(file = file_i,
+                            data = data,
+                            response = response,
+                            vars3 = chunks[[i]],
+                            main_prefix = main_prefix,
+                            width = width, height = height)
+    pdf_names <- c(pdf_names, basename(file_i))
+
+    # resumen para las 3 variables de esta página
+    for (v in chunks[[i]]) {
+      summary_acc[[length(summary_acc) + 1]] <- group_summary(data, v, response)
+    }
+  }
+
+  summary_df <- do.call(rbind, summary_acc)
+  list(total = length(pdf_names), pdfs = pdf_names, summary = summary_df)
+}
+
+# Bloque LaTeX: caption (i/N), figura a ancho línea, fuente y label
+make_latex_block <- function(pdfs, titulo_base, label_prefix) {
+  N <- length(pdfs); lines <- c()
+  for (i in seq_along(pdfs)) {
+    lines <- c(lines,
+      "\\begin{figure}[t]",
+      sprintf("  \\caption{%s (%d/%d)}", titulo_base, i, N),
+      "  \\centering",
+      sprintf("  \\includegraphics[width=\\linewidth]{%s}", pdfs[i]),
+      "  \\begin{center}\\footnotesize \\textbf{Fuente:} Elaboración propia.\\end{center}",
+      sprintf("  \\label{fig:%s-%02d}", label_prefix, i),
+      "\\end{figure}",
+      "")
+  }
+  lines
+}
+
+# ------------------- Variables categóricas unificadas -------------------
+vars_categoricas <- c(
+  "carrusel", "selfie", "otro_golfista",
+  "campo_golf", "indoor","es_usa", "genero", "emocion", "dia_semana", "juegos_olimpicos", "es_major"
+)
+
+# Añade automáticamente todas las *_top presentes en likes o comentarios
+vars_top_all <- union(
+  grep("_top$", names(datos.likes), value = TRUE),
+  grep("_top$", names(datos.comentarios), value = TRUE)
+)
+
+# Lista final unificada (única y ordenada por aparición)
+vars_categoricas_todo <- unique(c(vars_categoricas, vars_top_all))
+
+# ------------------- Exportación -------------------
+# Likes
+res_likes <- export_many_pdfs(
+  file_stub = "likes_categoricasMIX_3vertical",
+  data = datos.likes, response = "n_likes",
+  vars = vars_categoricas_todo, main_prefix = "Likes",
+  chunk_size = 3, width = 8, height = 11.5
+)
+
+# Comentarios
+res_coment <- export_many_pdfs(
+  file_stub = "comentarios_categoricasMIX_3vertical",
+  data = datos.comentarios, response = "n_comentarios",
+  vars = vars_categoricas_todo, main_prefix = "Comentarios",
+  chunk_size = 3, width = 8, height = 11.5
+)
+
+# ------------------- CSVs de resumen -------------------
+# (análogo al skewness.csv del script de Overleaf)
+if (!is.null(res_likes$summary)) {
+  write.csv(res_likes$summary,
+            file = file.path(out_dir, "modelo4_boxplots_resumen.csv"),
+            row.names = FALSE, fileEncoding = "UTF-8")
+}
+if (!is.null(res_coment$summary)) {
+  write.csv(res_coment$summary,
+            file = file.path(out_dir, "modelo4_boxplots_resumen.csv"),
+            row.names = FALSE, fileEncoding = "UTF-8")
+}
+
+# ------------------- Bloque LaTeX automático -------------------
+latex_likes <- make_latex_block(
+  res_likes$pdfs, "Diagramas de caja del Modelo 5", "boxlikes"
+)
+latex_coment <- make_latex_block(
+  res_coment$pdfs, "Diagramas de caja del Modelo 6", "boxcoment"
+)
+
+writeLines(c("% ----- BLOQUE AUTO: Boxplots categóricos (3 variables/hoja) -----",
+             latex_likes, latex_coment),
+           con = file.path(out_dir, "bloque_boxplots_categoricosMIX_3porhoja.tex"))
+
+# ------------------- Log de salida -------------------
+message("PDFs creados en: ", normalizePath(out_dir, winslash = "/"))
+print(res_likes$pdfs)
+print(res_coment$pdfs)
+```
+
+## Correlación variables continuas
+
+```{r correlacion-continuas}
+vars_continuas <- c('posicion_mundial', 'n_fotos', "n_videos","n_palabras","n_hashtags", "n_menciones", 
+                    "n_emojis","n_rostros", "edad",'dinero_2024', 'n_torneos_total',
+                    'n_majors', 'seguidores', 'publicaciones','n_comentarios', 'n_likes')
+corrplot(cor(select(datos.likes, all_of(vars_continuas))), method = "color", type = "upper", order = "hclust",
+         addCoef.col = "black", tl.col = "black", tl.srt = 45, tl.cex = 0.8, number.cex = 0.7)
+
+corrplot(cor(select(datos.comentarios, all_of(vars_continuas))), method = "color", type = "upper", order = "hclust",
+         addCoef.col = "black", tl.col = "black", tl.srt = 45, tl.cex = 0.8, number.cex = 0.7)
+```
+
+## Transformaciones y normalidad
+
+```{r transformaciones-continuas, resultados='asis'}
+vars_continuas_estudio <- c('posicion_mundial', 'n_fotos', "n_videos", "n_palabras","n_hashtags", "n_menciones", 
+                            "n_emojis","n_rostros", "edad", 'dinero_2024',
+                            'n_torneos_total', 'n_majors', 'seguidores', 'publicaciones',
+                            'n_comentarios', 'n_likes')
+for (variable in vars_continuas_estudio) {
+  variable.sqrt <- paste0(variable, ".sqrt")
+  variable.log <- paste0(variable, ".log")
+  datos.likes[[variable.sqrt]] <- sqrt(datos.likes[[variable]])
+  x <- ifelse(datos.likes[[variable]] == 0, 1, datos.likes[[variable]])
+  datos.likes[[variable.log]] <- log(x)
+  skew.raw <- skewness(datos.likes[[variable]], na.rm = TRUE)
+  skew.sqrt <- skewness(datos.likes[[variable.sqrt]], na.rm = TRUE)
+  skew.log <- skewness(datos.likes[[variable.log]], na.rm = TRUE)
+  g1 <- ggplot(datos.likes, aes(x = !!sym(variable))) + geom_density() + stat_overlay_normal_density(color = "red", linetype = "dashed") + labs(title = paste0("Bruto (Skew=", round(skew.raw,2), ")"))
+  g2 <- ggplot(datos.likes, aes(x = !!sym(variable.sqrt))) + geom_density() + stat_overlay_normal_density(color = "red", linetype = "dashed") + labs(title = paste0("Raíz (Skew=", round(skew.sqrt,2), ")"))
+  g3 <- ggplot(datos.likes, aes(x = !!sym(variable.log))) + geom_density() + stat_overlay_normal_density(color = "red", linetype = "dashed") + labs(title = paste0("Log (Skew=", round(skew.log,2), ")"))
+  grid.arrange(g1, g2, g3, ncol = 3)
+  df.resultados <- data.frame(original = skew.raw, raiz = skew.sqrt, log = skew.log)
+  print(kable(df.resultados, caption = paste0("Skewness para ", variable), digits = 2))
+}
+
+for (variable in vars_continuas_estudio) {
+  variable.sqrt <- paste0(variable, ".sqrt")
+  variable.log <- paste0(variable, ".log")
+  datos.comentarios[[variable.sqrt]] <- sqrt(datos.comentarios[[variable]])
+  x <- ifelse(datos.comentarios[[variable]] == 0, 1, datos.comentarios[[variable]])
+  datos.comentarios[[variable.log]] <- log(x)
+  skew.raw <- skewness(datos.comentarios[[variable]], na.rm = TRUE)
+  skew.sqrt <- skewness(datos.comentarios[[variable.sqrt]], na.rm = TRUE)
+  skew.log <- skewness(datos.comentarios[[variable.log]], na.rm = TRUE)
+  g1 <- ggplot(datos.comentarios, aes(x = !!sym(variable))) + geom_density() + stat_overlay_normal_density(color = "red", linetype = "dashed") + labs(title = paste0("Bruto (Skew=", round(skew.raw,2), ")"))
+  g2 <- ggplot(datos.comentarios, aes(x = !!sym(variable.sqrt))) + geom_density() + stat_overlay_normal_density(color = "red", linetype = "dashed") + labs(title = paste0("Raíz (Skew=", round(skew.sqrt,2), ")"))
+  g3 <- ggplot(datos.comentarios, aes(x = !!sym(variable.log))) + geom_density() + stat_overlay_normal_density(color = "red", linetype = "dashed") + labs(title = paste0("Log (Skew=", round(skew.log,2), ")"))
+  grid.arrange(g1, g2, g3, ncol = 3)
+  df.resultados <- data.frame(original = skew.raw, raiz = skew.sqrt, log = skew.log)
+  print(kable(df.resultados, caption = paste0("Skewness para ", variable), digits = 2))
+}
+```
+```{r}
+# =========================================================
+# Densidades Bruto/Raíz/Log por variable (MIX)
+# -> 3 variables por hoja (rejilla 3x3: filas=variables, columnas=Bruto/Raíz/Log1p)
+# -> Un PDF por página (p01, p02, ...)
+# -> CSV con skewness por modelo
+# -> Bloque LaTeX auto con "(i/N)" y fuente
+# =========================================================
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(gridExtra)
+  library(grid)
+  library(dplyr)
+  library(readr)
+})
+
+out_dir <- "figuras"
+if (!dir.exists(out_dir)) dir.create(out_dir, showWarnings = FALSE)
+
+vars_continuas_estudio <- c('posicion_mundial', 'n_fotos', "n_videos", "n_palabras","n_hashtags", "n_menciones", 
+                            "n_emojis","n_rostros", "edad", 'dinero_2024',
+                            'n_torneos_total', 'n_majors', 'seguidores', 'publicaciones',
+                            'n_comentarios', 'n_likes')
+
+# ---------- utilidades ----------
+skewness_vec <- function(x) {
+  x <- x[is.finite(x)]
+  if (length(x) < 3) return(NA_real_)
+  m <- mean(x); s <- sd(x)
+  if (!is.finite(s) || s == 0) return(NA_real_)
+  mean(((x - m)/s)^3)
+}
+
+normal_overlay <- function(df, aes_x) {
+  m <- mean(df[[aes_x]], na.rm = TRUE)
+  s <- sd(df[[aes_x]], na.rm = TRUE)
+  if (!is.finite(m) || !is.finite(s) || s == 0) return(NULL)
+  stat_function(fun = function(z) dnorm(z, mean = m, sd = s),
+                linetype = "dashed", linewidth = 0.5, color = "red")
+}
+
+make_density_plot <- function(df, colname, titulo) {
+  ggplot(df, aes(x = .data[[colname]])) +
+    geom_density(na.rm = TRUE) +
+    normal_overlay(df, colname) +
+    labs(title = titulo, x = colname, y = "Densidad") +
+    theme_minimal(base_size = 9) +
+    theme(plot.title = element_text(face = "bold", size = 9))
+}
+
+# Tríptico (Bruto, Raíz, Log1p) como grob de 1x3 para UNA variable
+triptych_grob <- function(data, var) {
+  df <- data %>% select(all_of(var)) %>% rename(x = all_of(var))
+  df <- df %>% mutate(
+    x_sqrt  = sqrt(pmax(x, 0)),
+    x_log1p = log1p(pmax(x, 0))
+  )
+  sk_raw  <- skewness_vec(df$x)
+  sk_sqrt <- skewness_vec(df$x_sqrt)
+  sk_log  <- skewness_vec(df$x_log1p)
+
+  g1 <- make_density_plot(df %>% rename(!!var := x),
+                          var, sprintf("Bruto (Skew=%.2f)", sk_raw))
+  g2 <- make_density_plot(df %>% rename(!!paste0(var,".sqrt") := x_sqrt),
+                          paste0(var,".sqrt"), sprintf("Raíz (Skew=%.2f)", sk_sqrt))
+  g3 <- make_density_plot(df %>% rename(!!paste0(var,".log1p") := x_log1p),
+                          paste0(var,".log1p"), sprintf("Log1p (Skew=%.2f)", sk_log))
+
+  grob <- arrangeGrob(g1, g2, g3, ncol = 3)
+  list(grob = grob,
+       skew = tibble(variable = var,
+                     skew_bruto = sk_raw, skew_raiz = sk_sqrt, skew_log1p = sk_log))
+}
+
+# Tríptico vacío (1x3) para rellenar filas y mantener 1/3 de altura
+empty_triptych <- function() {
+  gridExtra::arrangeGrob(grid::nullGrob(), grid::nullGrob(), grid::nullGrob(), ncol = 3)
+}
+
+# Divide en grupos de tamaño n (aquí 3 variables por página)
+split_in_chunks <- function(x, n = 3) {
+  x <- x[x %in% names(df_dummy)]  # df_dummy se definirá en export
+  if (!length(x)) return(list())
+  split(x, ceiling(seq_along(x) / n))
+}
+
+# Exporta en lotes de 3 variables/página -> PDF p01, p02, ...
+export_model_batches <- function(datos_modelo, modelo_tag = c("modelo5","modelo6"),
+                                 vars = vars_continuas_estudio,
+                                 page_vars = 3,
+                                 width = 8, height = 11.5) {
+  modelo_tag <- match.arg(modelo_tag)
+
+  # para filtrar variables existentes
+  assign("df_dummy", datos_modelo, inherits = TRUE)
+  chunks <- split_in_chunks(vars, n = page_vars)
+
+  skew_acc <- list()
+  pdf_names <- character(0)
+
+  for (i in seq_along(chunks)) {
+    vars_i <- chunks[[i]]
+    triptics <- lapply(vars_i, function(v) triptych_grob(datos_modelo, v))
+
+    # recolecta skew
+    skew_acc[[length(skew_acc)+1]] <- bind_rows(lapply(triptics, `[[`, "skew"))
+
+    # completar hasta 3 filas con trípticos vacíos
+    if (length(triptics) < 3) {
+      for (k in seq_len(3 - length(triptics))) {
+        triptics[[length(triptics) + 1]] <- list(grob = empty_triptych())
+      }
+    }
+
+    # página con 3 filas de igual altura (1/3 cada una)
+    page_grob <- gridExtra::arrangeGrob(
+      grobs = lapply(triptics[1:3], `[[`, "grob"),
+      ncol = 1,
+      heights = grid::unit(rep(1, 3), "null")
+    )
+
+    file_pdf <- file.path(out_dir, sprintf("%s_densidadesMIX_p%02d.pdf", modelo_tag, i))
+    pdf(file_pdf, width = width, height = height)
+    grid.draw(page_grob)
+    dev.off()
+    pdf_names <- c(pdf_names, basename(file_pdf))
+  }
+
+  # CSV de skewness
+  if (length(skew_acc)) {
+    write_csv(bind_rows(skew_acc),
+              file.path(out_dir, sprintf("%s_skewness.csv", modelo_tag)))
+  }
+
+  list(total = length(pdf_names), pdfs = pdf_names)
+}
+
+# ---------------- Ejecutar ----------------
+# Modelo 5 = likes, Modelo 6 = comentarios (MIX)
+res1 <- export_model_batches(datos.likes,        "modelo5",
+                             vars = vars_continuas_estudio, page_vars = 3)
+res2 <- export_model_batches(datos.comentarios,  "modelo6",
+                             vars = vars_continuas_estudio, page_vars = 3)
+
+message("PDFs creados en: ", normalizePath(out_dir, winslash = "/"))
+print(res1$pdfs); print(res2$pdfs)
+
+# -------- Bloque LaTeX automático (caption arriba + fuente) --------
+make_latex_block <- function(pdfs, titulo_base, label_prefix) {
+  N <- length(pdfs); lines <- c()
+  for (i in seq_along(pdfs)) {
+    lines <- c(lines,
+      "\\begin{figure}[t]",
+      sprintf("  \\caption{%s (%d/%d)}", titulo_base, i, N),
+      "  \\centering",
+      sprintf("  \\includegraphics[width=\\linewidth]{%s}", pdfs[i]),
+      "  \\begin{center}\\footnotesize \\textbf{Fuente:} Elaboración propia.\\end{center}",
+      sprintf("  \\label{fig:%s-%02d}", label_prefix, i),
+      "\\end{figure}", "")
+  }
+  lines
+}
+
+latex_modelo1 <- make_latex_block(res1$pdfs, "Transformaciones del Modelo 5", "modelo5")
+latex_modelo2 <- make_latex_block(res2$pdfs, "Transformaciones del Modelo 6", "modelo6")
+writeLines(c("% ----- BLOQUE AUTO: Densidades (3 variables/hoja) -----",
+             latex_modelo1, latex_modelo2),
+           con = file.path(out_dir, "bloque_densidades_3porhojaMIX.tex"))
+message("LaTeX escrito en: ",
+        normalizePath(file.path(out_dir, "bloque_densidades_3porhojaMIX.tex"), winslash = "/"))
+
+```
+
+## Resumen descriptivo
+
+```{r resumen-descriptivo}
+tabla_descriptiva <- describe(select(datos.likes, all_of(vars_continuas))) %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("Variable") %>%
+  select(Variable, n, mean, sd, median, min, max, skew, kurtosis)
+kable(tabla_descriptiva, digits = 2, format = "latex", booktabs = TRUE,
+      caption = "Resumen estadístico de variables continuas") %>%
+  kable_styling(latex_options = c("scale_down"), position = "center")
+
+tabla_descriptiva <- describe(select(datos.comentarios, all_of(vars_continuas))) %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("Variable") %>%
+  select(Variable, n, mean, sd, median, min, max, skew, kurtosis)
+kable(tabla_descriptiva, digits = 2, format = "latex", booktabs = TRUE,
+      caption = "Resumen estadístico de variables continuas") %>%
+  kable_styling(latex_options = c("scale_down"), position = "center")
+```
+
+# Modelos Lineales Mixtos
+
+## Modelo de Likes
+
+```{r modelo-likes}
+modelo.likes <- lmer(
+  n_likes.log ~ 
+    posicion_mundial.log + 
+    n_fotos + 
+    n_videos + 
+    n_palabras.log + 
+    n_hashtags + 
+    n_menciones + 
+    n_emojis + 
+    n_rostros + 
+    edad.log + 
+    dinero_2024.log + 
+    n_torneos_total + 
+    n_majors + 
+    seguidores.log + 
+    publicaciones.log + 
+    carrusel + selfie + otro_golfista + 
+    campo_golf + indoor +
+    es_usa + genero + emocion + dia_semana + juegos_olimpicos + es_major+
+    (1 | usuario),
+  data = datos.likes,
+  REML=FALSE
+)
+summary(modelo.likes)
+```
+
+```{r tabla-likes}
+tab_model(modelo.likes)
+```
+
+```{r qqplot-likes}
+qqPlot(resid(modelo.likes), main = 'Gráfico QQ Normal - Likes')
+```
+
+## Modelo de Comentarios
+
+```{r modelo-comentarios}
+modelo.comentarios <- lmer(
+  n_comentarios.log ~ 
+    posicion_mundial.log + 
+    n_fotos + 
+    n_videos + 
+    n_palabras.log + 
+    n_hashtags + 
+    n_menciones + 
+    n_emojis + 
+    n_rostros + 
+    edad.log + 
+    dinero_2024.log + 
+    n_torneos_total + 
+    n_majors + 
+    seguidores.log + 
+    publicaciones.log + 
+    carrusel + selfie + otro_golfista + 
+    campo_golf + indoor +
+    es_usa + genero + emocion + dia_semana + juegos_olimpicos + es_major+
+    (1 | usuario),
+  data = datos.comentarios,
+  REML=FALSE
+)
+summary(modelo.comentarios)
+```
+
+```{r tabla-comentarios}
+tab_model(modelo.comentarios)
+```
+
+```{r qqplot-comentarios}
+qqPlot(resid(modelo.comentarios), main = 'Gráfico QQ Normal - Comentarios')
+```
+
+# Bootstrap
+
+```{r bootstrap-likes, cache=TRUE}
+set.seed(456)
+bootstrap_resultados_likes <- bootstrap(
+  model = modelo.likes,
+  .f = fixef,
+  type = "case",
+  resample = c(TRUE, TRUE),
+  B = 5000
+)
+saveRDS(bootstrap_resultados_likes, "C:/NAS_PAU/TFG/AnalisisGolf/bootstrap_5000_likes_Mixto.rds")
+#bootstrap_resultados_likes <- readRDS("C:/NAS_PAU/TFG/AnalisisGolf/bootstrap_5000_likes_Mixto.rds")
+conf_intervals_likes <- confint(bootstrap_resultados_likes, type = "perc")
+print(conf_intervals_likes, n = 55)
+```
+
+```{r bootstrap-comentarios, cache=TRUE}
+set.seed(456)
+bootstrap_resultados_comentarios <- bootstrap(
+  model = modelo.comentarios,
+  .f = fixef,
+  type = "case",
+  resample = c(TRUE, TRUE),
+  B = 5000
+)
+saveRDS(bootstrap_resultados_comentarios, "C:/NAS_PAU/TFG/AnalisisGolf/bootstrap_5000_comentarios_Mixto.rds")
+#bootstrap_resultados_comentarios <- readRDS("C:/NAS_PAU/TFG/AnalisisGolf/bootstrap_5000_comentarios_Mixto.rds")
+conf_intervals_comentarios <- confint(bootstrap_resultados_comentarios, type = "perc")
+print(conf_intervals_comentarios, n = 55)
+```
+
+```{r}
+# Crear dataframe de intervalos y marcar significativos
+df.confint_likes <- as.data.frame(conf_intervals_likes)
+data_coef_likes <- df.confint_likes %>%
+  mutate(significativo = (lower > 0 & upper > 0) | (lower < 0 & upper < 0))
+
+# Formatear resultados
+formatea.resultados.modelo_likes <- function(df.resultados.bootstrap_likes){
+  data.frame(
+    coef.boot = round(df.resultados.bootstrap_likes$estimate, 3),
+    ci.boot = paste0('[', round(df.resultados.bootstrap_likes$lower, 3), ', ', round(df.resultados.bootstrap_likes$upper, 3), ']')
+  )
+}
+
+# Preparar tabla
+df.resultados.likes <- formatea.resultados.modelo_likes(data_coef_likes) %>%
+  mutate(
+    Predictores = data_coef_likes$term,
+    significativo = data_coef_likes$significativo
+  ) %>%
+  select(Predictores, coef.boot, ci.boot, significativo)
+
+colnames(df.resultados.likes)[2:3] <- c("coef.likes", "ci.likes")
+
+# Crear cabecera sin la columna significativo
+df.cabecera.likes <- data.frame(
+  col_keys = c("Predictores", "coef.likes", "ci.likes"),
+  nivel1 = c("", "Likes", "Likes"),
+  nivel2 = c("Predictores", "Coef.", "IC95%"),
+  stringsAsFactors = FALSE
+)
+
+# Tabla flextable
+ft_likes <- flextable(df.resultados.likes[, 1:3]) %>%
+  set_header_df(df.cabecera.likes, key = "col_keys") %>%
+  merge_h(part = "header") %>%
+  bold(i = ~ df.resultados.likes$significativo == TRUE, j = 2:3, part = "body") %>%
+  autofit()
+
+
+# Mostrar flextable
+ft_likes
+
+```
+
+```{r}
+# Crear dataframe de intervalos y marcar significativos
+df.confint_comentarios <- as.data.frame(conf_intervals_comentarios)
+data_coef_comentarios <- df.confint_comentarios %>%
+  mutate(significativo = (lower > 0 & upper > 0) | (lower < 0 & upper < 0))
+
+# Formatear resultados
+formatea.resultados.modelo_comentarios <- function(df.resultados.bootstrap_comentarios){
+  data.frame(
+    coef.boot = round(df.resultados.bootstrap_comentarios$estimate, 3),
+    ci.boot = paste0('[', round(df.resultados.bootstrap_comentarios$lower, 3), ', ', round(df.resultados.bootstrap_comentarios$upper, 3), ']')
+  )
+}
+
+# Preparar tabla
+df.resultados.comentarios <- formatea.resultados.modelo_comentarios(data_coef_comentarios) %>%
+  mutate(
+    Predictores = data_coef_comentarios$term,
+    significativo = data_coef_comentarios$significativo
+  ) %>%
+  select(Predictores, coef.boot, ci.boot, significativo)
+
+colnames(df.resultados.comentarios)[2:3] <- c("coef.comentarios", "ci.comentarios")
+
+# Crear cabecera sin la columna significativo
+df.cabecera.comentarios <- data.frame(
+  col_keys = c("Predictores", "coef.comentarios", "ci.comentarios"),
+  nivel1 = c("", "Comentarios", "Comentarios"),
+  nivel2 = c("Predictores", "Coef.", "IC95%"),
+  stringsAsFactors = FALSE
+)
+
+# Tabla flextable
+ft_comentarios <- flextable(df.resultados.comentarios[, 1:3]) %>%
+  set_header_df(df.cabecera.comentarios, key = "col_keys") %>%
+  merge_h(part = "header") %>%
+  bold(i = ~ df.resultados.comentarios$significativo == TRUE, j = 2:3, part = "body") %>%
+  autofit()
+
+
+# Mostrar flextable
+ft_comentarios
+
+```
+
+```{r}
+# Procesar Likes
+df.confint_likes <- as.data.frame(conf_intervals_likes)
+data_coef_likes <- df.confint_likes %>%
+  mutate(significativo = (lower > 0 & upper > 0) | (lower < 0 & upper < 0))
+
+# Procesar Comentarios
+df.confint_comentarios <- as.data.frame(conf_intervals_comentarios)
+data_coef_comentarios <- df.confint_comentarios %>%
+  mutate(significativo = (lower > 0 & upper > 0) | (lower < 0 & upper < 0))
+
+# Crear resultados para combinar
+resultados_likes <- data_coef_likes %>%
+  select(term, estimate, lower, upper)
+
+resultados_comentarios <- data_coef_comentarios %>%
+  select(term, estimate, lower, upper)
+
+# Renombrar columnas antes de unir
+colnames(resultados_likes)[2:4] <- c("Est_Likes", "Lower_Likes", "Upper_Likes")
+colnames(resultados_comentarios)[2:4] <- c("Est_Comentarios", "Lower_Comentarios", "Upper_Comentarios")
+
+# Unir por término predictor
+df_combinado <- resultados_likes %>%
+  full_join(resultados_comentarios, by = "term") %>%
+  mutate(
+    CI_Likes = paste0("[", round(Lower_Likes, 3), ", ", round(Upper_Likes, 3), "]"),
+    CI_Comentarios = paste0("[", round(Lower_Comentarios, 3), ", ", round(Upper_Comentarios, 3), "]"),
+    significativo_likes = (Lower_Likes > 0 & Upper_Likes > 0) | (Lower_Likes < 0 & Upper_Likes < 0),
+    significativo_comentarios = (Lower_Comentarios > 0 & Upper_Comentarios > 0) | (Lower_Comentarios < 0 & Upper_Comentarios < 0)
+  ) %>%
+  mutate(
+    Est_Likes = round(Est_Likes, 3),
+    Est_Comentarios = round(Est_Comentarios, 3)
+  )
+
+# Reorganizar columnas
+df_tabla <- df_combinado %>%
+  select(term, Est_Likes, CI_Likes, Est_Comentarios, CI_Comentarios,
+         significativo_likes, significativo_comentarios)
+
+colnames(df_tabla)[1] <- "Predictor"
+
+# Cabecera jerárquica
+cabecera <- data.frame(
+  col_keys = colnames(df_tabla)[1:5],
+  nivel1 = c("Predictors", "Likes (Trf Log)", "Likes (Trf Log)",
+             "Comentarios (Trf Log)", "Comentarios (Trf Log)"),
+  nivel2 = c("Predictors", "Estimates", "IC", "Estimates", "IC"),
+  stringsAsFactors = FALSE
+)
+
+# Crear flextable con negrita condicional
+ft_modelos <- flextable(df_tabla[, 1:5]) %>%
+  set_header_df(mapping = cabecera, key = "col_keys") %>%
+  merge_h(part = "header") %>%
+  bold(i = ~ df_tabla$significativo_likes == TRUE, j = c("Est_Likes", "CI_Likes"), part = "body") %>%
+  bold(i = ~ df_tabla$significativo_comentarios == TRUE, j = c("Est_Comentarios", "CI_Comentarios"), part = "body") %>%
+  autofit()
+
+# Mostrar tabla
+ft_modelos
+
+
+```
+
+```{r}
+# Renombrar columna 'term' a 'Predictor'
+df_tabla_latex <- df_combinado %>%
+  select(term, Est_Likes, CI_Likes, Est_Comentarios, CI_Comentarios,
+         significativo_likes, significativo_comentarios) %>%
+  rename(Predictor = term)
+
+# Aplicar negritas si son significativos
+df_tabla_latex <- df_tabla_latex %>%
+  mutate(
+    Est_Likes = ifelse(significativo_likes, paste0("\\textbf{", Est_Likes, "}"), as.character(Est_Likes)),
+    CI_Likes = ifelse(significativo_likes, paste0("\\textbf{", CI_Likes, "}"), as.character(CI_Likes)),
+    Est_Comentarios = ifelse(significativo_comentarios, paste0("\\textbf{", Est_Comentarios, "}"), as.character(Est_Comentarios)),
+    CI_Comentarios = ifelse(significativo_comentarios, paste0("\\textbf{", CI_Comentarios, "}"), as.character(CI_Comentarios))
+  ) %>%
+  select(-significativo_likes, -significativo_comentarios)
+
+# Diccionario de nombres legibles
+nombres_bonitos <- c(
+  "edad.log" = "Edad (Trf Log)",
+  "es_usaSi" = "Estadounidense",
+  "publicaciones.log" = "Publicaciones (Trf Log)",
+  "seguidores.log" = "Seguidores (Trf Log)",
+  "posicion_mundial.log" = "Ranking mundial (Trf Log)",
+  "dinero_2024.log" = "Dinero 2024 (Trf Log)",
+  "generoMasculino" = "Genero",
+  "n_torneos_total" = "Torneos jugados",
+  "n_majors" = "Torneos Majors",
+  "juegos_olimpicosSi" = "Juegos Olímpicos",
+  "es_majorSi" = "Major",
+  "carruselSi" = "Carrusel",
+  "n_fotos" = "Nº Fotos",
+  "n_videos" = "Nº Videos",
+  "n_palabras.log" = "Nº Palabras (Trf Log)",
+  "n_hashtags" = "Nº Hashtags",
+  "n_menciones" = "Nº Menciones",
+  "n_emojis" = "Nº Emojis",
+  "campo_golfSi" = "Campo de golf",
+  "indoorSi" = "Indoor",
+  "n_rostros" = "Nº Rostros",
+  "selfieSi" = "Selfie",
+  "otro_golfistaSi" = "Otro golfista",
+  "emocionhappy" = "Felicidad",
+  "emocionsurprise" = "Sorpresa",
+  "emocionfear" = "Miedo",
+  "emociondisgust" = "Asco",
+  "emocionangry" = "Enfado",
+  "emocionsad" = "Tristeza",
+  "dia_semanaMar" = "Martes",
+  "dia_semanaMié" = "Miércoles",
+  "dia_semanaJue" = "Jueves",
+  "dia_semanaVie" = "Viernes",
+  "dia_semanaSáb" = "Sábado",
+  "dia_semanaDom" = "Domingo"
+)
+
+# Renombrar predictores
+df_tabla_latex$Predictor <- dplyr::recode(df_tabla_latex$Predictor, !!!nombres_bonitos)
+
+# Definir bloques
+bloques <- list(
+  "(Intercept)",
+  "Usuario" = c("Edad (Trf Log)", "Estadounidense", "Genero", "Publicaciones (Trf Log)", "Seguidores (Trf Log)"),
+  "Información deportiva" = c("Ranking mundial (Trf Log)", "Dinero 2024 (Trf Log)","Torneos jugados", "Torneos Majors"),
+  "Publicaciones en Majors y JJOO" = c("Juegos Olímpicos","Major"),
+  "Publicación" = c("Carrusel", "Nº Fotos", "Nº Videos"),
+  "Día de la semana (ref=Lunes)" = c("Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"),
+  "Texto" = c("Nº Palabras (Trf Log)", "Nº Hashtags", "Nº Menciones", "Nº Emojis"),
+  "Imagen" = c("Campo de golf", "Indoor", "Nº Rostros", "Selfie", "Otro golfista"),
+  "Emoción (ref=Neutral)" = c("Felicidad", "Sorpresa", "Miedo", "Asco", "Enfado", "Tristeza")
+)
+
+# Asignar grupo
+df_tabla_latex$grupo <- sapply(df_tabla_latex$Predictor, function(x) {
+  match <- names(bloques)[sapply(bloques, function(b) x %in% b)]
+  if (length(match) == 0) "Otros" else match
+})
+
+# Ordenar por grupo
+df_tabla_latex <- df_tabla_latex %>%
+  arrange(factor(grupo, levels = names(bloques)), match(Predictor, unlist(bloques)))
+
+# Crear tabla base
+tabla_final <- kable(df_tabla_latex[, 1:5],
+                     format = "latex",
+                     booktabs = TRUE,
+                     escape = FALSE,
+                     caption = "Estimaciones e IC95 para Likes y Comentarios") %>%
+  add_header_above(c(" " = 1, "Likes (log)" = 2, "Comentarios (log)" = 2)) %>%
+  kable_styling(latex_options = c("scale_down", "striped", "HOLD_position"), position = "center")
+
+# Insertar separadores por grupo (en cursiva sin negrita)
+for (bloque in rev(names(bloques))) {
+  pred_en_bloque <- bloques[[bloque]]
+  n_filas <- sum(df_tabla_latex$Predictor %in% pred_en_bloque)
+  if (n_filas > 0) {
+    idx <- which(df_tabla_latex$Predictor %in% pred_en_bloque)[1]
+    tabla_final <- group_rows(
+      tabla_final,
+      group_label = paste0("\\textit{", bloque, "}"),
+      start_row = idx,
+      end_row = idx + n_filas - 1,
+      escape = FALSE
+    )
+  }
+}
+
+# Ajuste final del código LaTeX: encabezado personalizado y quitar negrita en bloques
+latex_code <- as.character(tabla_final)
+
+# Cambiar el encabezado de la tabla
+latex_code <- gsub(
+  pattern = "\\\\begin\\{tabular\\}\\[t\\]\\{.*?\\}",
+  replacement = "\\\\resizebox{0.75\\\\linewidth}{!}{\n\\\\begin{tabular}[t]{lcccc}",
+  x = latex_code
+)
+
+# Cerrar correctamente el resizebox al final
+latex_code <- gsub(
+  pattern = "\\\\end\\{tabular\\}",
+  replacement = "\\\\end{tabular}}",
+  x = latex_code
+)
+
+# Eliminar negrita de encabezados de grupo
+latex_code <- gsub(
+  pattern = "\\\\textbf\\{\\\\textit\\{(.*?)\\}\\}",
+  replacement = "\\\\textit{\\1}",
+  x = latex_code
+)
+
+# Mostrar LaTeX final
+cat(latex_code)
+```
