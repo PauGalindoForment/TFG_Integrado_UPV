@@ -1,5 +1,5 @@
 import pandas as pd
-import ast  # Para convertir texto tipo lista a lista real
+import ast 
 
 # Cargar el archivo
 df = pd.read_excel("jugadores_LIV_PGA_unificado.xlsx")
@@ -18,4 +18,5 @@ df["Otros Tours Limpios"] = df["Otros Tours Jugados"].apply(limpiar_tours)
 
 # Guardar
 df.to_excel("jugadores_tours_limpios.xlsx", index=False)
+
 
