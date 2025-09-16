@@ -122,25 +122,13 @@ for perfil in perfiles[2:10]:
         ActionChains(driver).move_to_element(cookies).click(cookies).perform()
     except:
         print('Cookies aceptadas')
-    # # Año 2024
-    # try:
-    #     anyo_2024_selec = driver.find_element(By.XPATH, "//button[text()='Seasons 2024']")#"//p[text()='Seasons']/ancestor::button")
-    #     ActionChains(driver).move_to_element(anyo_2024_selec).click(anyo_2024_selec).perform()
-    #     time.sleep(random.randint(5,7))         
-    # except:
-    #     eventos_perf.append('-')
-    #     victorias_perf.append('-')
-    #     top10_perf.append('-')
-    #     corteshechos_perf.append('-')
-    #     dinero_perf.append('-')
-    #     continue
 
     try:
         print("🔄 Esperando que la página cargue el botón 'Seasons' visible en el DOM...")
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//button[contains(@aria-label, 'Seasons')]"))
         )
-        print("✅ Botón 'Seasons' detectado en el DOM.")
+        print("Botón 'Seasons' detectado en el DOM.")
 
         # Ahora esperar que sea clickeable
         seasons_button = WebDriverWait(driver, 10).until(
@@ -148,37 +136,25 @@ for perfil in perfiles[2:10]:
         )
         driver.execute_script("arguments[0].scrollIntoView(true);", seasons_button)
         driver.execute_script("arguments[0].click();", seasons_button)
-        print("✅ Clic realizado en 'Seasons'.")
+        print("Clic realizado en 'Seasons'.")
 
         # Seleccionar 2024
-        print("🔄 Esperando opción '2024'...")
+        print("Esperando opción '2024'...")
         option_2024 = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//li[.='2024']"))
         )
         driver.execute_script("arguments[0].click();", option_2024)
-        print("✅ Año 2024 seleccionado.")
+        print("Año 2024 seleccionado.")
         time.sleep(2)
 
     except Exception as e:
-        print(f"❌ Fallo en selección de año 2024: {e}")
+        print(f"Fallo en selección de año 2024: {e}")
         eventos_perf.append('-')
         victorias_perf.append('-')
         top10_perf.append('-')
         corteshechos_perf.append('-')
         dinero_perf.append('-')
         continue
-
-
-    # try:
-    #     anyo_2024 = driver.find_element(By.XPATH, "//span[text()='2024']")
-    # except:
-    #     eventos_perf.append('-')
-    #     victorias_perf.append('-')
-    #     top10_perf.append('-')
-    #     corteshechos_perf.append('-')
-    #     dinero_perf.append('-')
-    #     continue
-
     # Volver a cargar HTML
     time.sleep(random.randint(5, 7))
     html = driver.page_source
@@ -223,3 +199,4 @@ for perfil in perfiles[2:10]:
     
 
     
+
