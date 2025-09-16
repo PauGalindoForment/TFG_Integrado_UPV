@@ -20,10 +20,10 @@ df = pd.read_excel(excel_path, sheet_name='Hoja1')
 df = df[df['Instagram'].notnull()]
 df = df[~df['Instagram'].str.lower().str.contains('no tiene instagram')]
 
-# ✅ Eliminar parámetros tipo ?hl=en de toda la columna
+# Eliminar parámetros tipo ?hl=en de toda la columna
 df['Instagram'] = df['Instagram'].str.split('?').str[0]
 
-# ✅ Extraer username desde la URL limpia
+# Extraer username desde la URL limpia
 df['username'] = df['Instagram'].apply(
     lambda url: url.rstrip('/').split('/')[-1] if isinstance(url, str) else ''
 )
@@ -48,9 +48,10 @@ for archivo in os.listdir(carpeta_fotos):
             ruta_nueva = os.path.join(carpeta_fotos, f"{username}.jpg")
 
             if os.path.exists(ruta_nueva):
-                print(f"⚠️ Ya existe: {ruta_nueva} — no se renombra {archivo}")
+                print(f"Ya existe: {ruta_nueva} — no se renombra {archivo}")
             else:
                 os.rename(ruta_vieja, ruta_nueva)
-                print(f"✅ Renombrado: {archivo} → {username}.jpg")
+                print(f"Renombrado: {archivo} → {username}.jpg")
         else:
-            print(f"⚠️ No encontrado en Excel: {archivo}")
+            print(f"No encontrado en Excel: {archivo}")
+
