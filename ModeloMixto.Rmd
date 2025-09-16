@@ -95,21 +95,13 @@ for (var in vars_categoricas) {
 par(mfrow = c(1, 1))
 ```
 ```{r}
-# =========================================================
-# Boxplots categóricos -> 3 variables por hoja (vertical)
-# - Un PDF por página (p01, p02, ...)
-# - CSV con resumen por variable y nivel (N/mediana/IQR/media/SD)
-# - Bloque LaTeX auto con "(i/N)" y fuente
-# - Estilo gris, sin outliers, mediana gruesa
-# =========================================================
 
-# ---- Configuración carpeta de salida ----
 out_dir <- "figuras_boxplots"
 if (!dir.exists(out_dir)) dir.create(out_dir, showWarnings = FALSE)
 
 present_vars <- function(vars, data) intersect(vars, names(data))
 
-# ---- Utilidades ----
+# Utilidades
 # Divide un vector en grupos de tamaño n (3 por página)
 split_in_chunks <- function(x, n = 3) {
   if (!length(x)) return(list())
@@ -145,7 +137,7 @@ group_summary <- function(df, var, response) {
   do.call(rbind, stats)
 }
 
-# Dibuja 3 boxplots verticales en 1 página (PDF único)
+# Dibuja 3 boxplots verticales en 1 página
 export_boxplots_onepage <- function(file, data, response, vars3,
                                     width = 8, height = 11.5,
                                     main_prefix = NULL) {
@@ -231,7 +223,7 @@ make_latex_block <- function(pdfs, titulo_base, label_prefix) {
   lines
 }
 
-# ------------------- Variables categóricas unificadas -------------------
+# Variables categóricas unificadas
 vars_categoricas <- c(
   "carrusel", "selfie", "otro_golfista",
   "campo_golf", "indoor","es_usa", "genero", "emocion", "dia_semana", "juegos_olimpicos", "es_major"
@@ -246,7 +238,7 @@ vars_top_all <- union(
 # Lista final unificada (única y ordenada por aparición)
 vars_categoricas_todo <- unique(c(vars_categoricas, vars_top_all))
 
-# ------------------- Exportación -------------------
+# Exportación
 # Likes
 res_likes <- export_many_pdfs(
   file_stub = "likes_categoricasMIX_3vertical",
@@ -263,8 +255,7 @@ res_coment <- export_many_pdfs(
   chunk_size = 3, width = 8, height = 11.5
 )
 
-# ------------------- CSVs de resumen -------------------
-# (análogo al skewness.csv del script de Overleaf)
+# CSVs de resumen
 if (!is.null(res_likes$summary)) {
   write.csv(res_likes$summary,
             file = file.path(out_dir, "modelo4_boxplots_resumen.csv"),
@@ -276,7 +267,7 @@ if (!is.null(res_coment$summary)) {
             row.names = FALSE, fileEncoding = "UTF-8")
 }
 
-# ------------------- Bloque LaTeX automático -------------------
+# Bloque LaTeX automático
 latex_likes <- make_latex_block(
   res_likes$pdfs, "Diagramas de caja del Modelo 5", "boxlikes"
 )
@@ -288,7 +279,7 @@ writeLines(c("% ----- BLOQUE AUTO: Boxplots categóricos (3 variables/hoja) ----
              latex_likes, latex_coment),
            con = file.path(out_dir, "bloque_boxplots_categoricosMIX_3porhoja.tex"))
 
-# ------------------- Log de salida -------------------
+# Log de salida
 message("PDFs creados en: ", normalizePath(out_dir, winslash = "/"))
 print(res_likes$pdfs)
 print(res_coment$pdfs)
@@ -349,22 +340,6 @@ for (variable in vars_continuas_estudio) {
 }
 ```
 ```{r}
-# =========================================================
-# Densidades Bruto/Raíz/Log por variable (MIX)
-# -> 3 variables por hoja (rejilla 3x3: filas=variables, columnas=Bruto/Raíz/Log1p)
-# -> Un PDF por página (p01, p02, ...)
-# -> CSV con skewness por modelo
-# -> Bloque LaTeX auto con "(i/N)" y fuente
-# =========================================================
-
-suppressPackageStartupMessages({
-  library(ggplot2)
-  library(gridExtra)
-  library(grid)
-  library(dplyr)
-  library(readr)
-})
-
 out_dir <- "figuras"
 if (!dir.exists(out_dir)) dir.create(out_dir, showWarnings = FALSE)
 
@@ -373,7 +348,7 @@ vars_continuas_estudio <- c('posicion_mundial', 'n_fotos', "n_videos", "n_palabr
                             'n_torneos_total', 'n_majors', 'seguidores', 'publicaciones',
                             'n_comentarios', 'n_likes')
 
-# ---------- utilidades ----------
+# utilidades
 skewness_vec <- function(x) {
   x <- x[is.finite(x)]
   if (length(x) < 3) return(NA_real_)
@@ -435,7 +410,7 @@ split_in_chunks <- function(x, n = 3) {
   split(x, ceiling(seq_along(x) / n))
 }
 
-# Exporta en lotes de 3 variables/página -> PDF p01, p02, ...
+# Exporta en lotes de 3 variables/página 
 export_model_batches <- function(datos_modelo, modelo_tag = c("modelo5","modelo6"),
                                  vars = vars_continuas_estudio,
                                  page_vars = 3,
@@ -486,7 +461,7 @@ export_model_batches <- function(datos_modelo, modelo_tag = c("modelo5","modelo6
   list(total = length(pdf_names), pdfs = pdf_names)
 }
 
-# ---------------- Ejecutar ----------------
+# Ejecutar
 # Modelo 5 = likes, Modelo 6 = comentarios (MIX)
 res1 <- export_model_batches(datos.likes,        "modelo5",
                              vars = vars_continuas_estudio, page_vars = 3)
@@ -496,7 +471,7 @@ res2 <- export_model_batches(datos.comentarios,  "modelo6",
 message("PDFs creados en: ", normalizePath(out_dir, winslash = "/"))
 print(res1$pdfs); print(res2$pdfs)
 
-# -------- Bloque LaTeX automático (caption arriba + fuente) --------
+# Bloque LaTeX automático (caption arriba + fuente)
 make_latex_block <- function(pdfs, titulo_base, label_prefix) {
   N <- length(pdfs); lines <- c()
   for (i in seq_along(pdfs)) {
@@ -939,4 +914,5 @@ latex_code <- gsub(
 
 # Mostrar LaTeX final
 cat(latex_code)
+
 ```
