@@ -38,12 +38,13 @@ for usuario in os.listdir(RUTA_PRINCIPAL):
 
                 dataframes.append(df)
             except Exception as e:
-                print(f"⚠️ Error leyendo {ruta_csv}: {e}")
+                print(f"Error leyendo {ruta_csv}: {e}")
 
 # Unir y exportar
 if dataframes:
     df_unido = pd.concat(dataframes, ignore_index=True)
     df_unido.to_excel(ARCHIVO_SALIDA, index=False)
-    print(f"✅ Archivo combinado exportado a '{ARCHIVO_SALIDA}' con columnas estándar.")
+    print(f"Archivo combinado exportado a '{ARCHIVO_SALIDA}' con columnas estándar.")
 else:
-    print("❌ No se encontraron archivos CSV válidos.")
+    print("No se encontraron archivos CSV válidos.")
+
