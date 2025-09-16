@@ -116,11 +116,6 @@ for (top in cols_top) {
 par(mfrow = c(1, 1))
 ```
 ```{r}
-# =========================================================
-# Boxplots base R en PDFs de 1 página (3 gráficos verticales por PDF)
-# Estilo gris, sin outliers, mediana gruesa
-# TODO unificado: categóricas + *_top dentro de "variables categóricas"
-# =========================================================
 
 # Carpeta de salida
 out_dir <- "figuras_boxplots"
@@ -185,7 +180,7 @@ export_many_pdfs <- function(file_stub, data, response, vars,
   invisible(TRUE)
 }
 
-# ------------------- Variables categóricas unificadas -------------------
+# Variables categóricas unificadas
 # Base de categóricas "manuales"
 vars_categoricas_base <- c(
   "carrusel","selfie","otro_golfista","campo_golf","indoor",
@@ -202,7 +197,7 @@ vars_top_all <- union(
 # Lista final unificada (única y ordenada por aparición)
 vars_categoricas_todo <- unique(c(vars_categoricas_base, vars_top_all))
 
-# ------------------- Exportación (solo dos bloques) -------------------
+# Exportación
 # Likes (todas las categóricas + top)
 export_many_pdfs(file_stub = "likes_categoricas_3vertical",
                  data = datos.likes, response = "n_likes",
@@ -270,22 +265,6 @@ for (variable in vars_continuas_estudio) {
 }
 ```
 ```{r}
-# =========================================================
-# Densidades Bruto/Raíz/Log por variable
-# -> 3 variables por hoja (rejilla 3x3: filas=variables, columnas=Bruto/Raíz/Log1p)
-# -> Un PDF por página (p01, p02, ...)
-# -> CSV con skewness por modelo
-# -> Bloque LaTeX auto con "(i/N)" y fuente
-# =========================================================
-
-suppressPackageStartupMessages({
-  library(ggplot2)
-  library(gridExtra)
-  library(grid)
-  library(dplyr)
-  library(readr)
-})
-
 out_dir <- "figuras"
 if (!dir.exists(out_dir)) dir.create(out_dir, showWarnings = FALSE)
 
@@ -296,7 +275,7 @@ vars_continuas_estudio <- c(
   'n_majors','seguidores','publicaciones','n_likes','n_comentarios'
 )
 
-# ---------- utilidades ----------
+# utilidade
 skewness_vec <- function(x) {
   x <- x[is.finite(x)]
   if (length(x) < 3) return(NA_real_)
@@ -409,7 +388,7 @@ export_model_batches <- function(datos_modelo, modelo_tag = c("modelo1","modelo2
   list(total = length(pdf_names), pdfs = pdf_names)
 }
 
-# ---------------- Ejecutar ----------------
+# Ejecutar
 # Modelo 1 = likes, Modelo 2 = comentarios
 res1 <- export_model_batches(datos.likes,        "modelo1",
                              vars = vars_continuas_estudio, page_vars = 3)
@@ -419,7 +398,7 @@ res2 <- export_model_batches(datos.comentarios,  "modelo2",
 message("PDFs creados en: ", normalizePath(out_dir, winslash = "/"))
 print(res1$pdfs); print(res2$pdfs)
 
-# -------- Bloque LaTeX automático (caption arriba + fuente) --------
+# Bloque LaTeX automático (caption arriba + fuente)
 make_latex_block <- function(pdfs, titulo_base, label_prefix) {
   N <- length(pdfs); lines <- c()
   for (i in seq_along(pdfs)) {
@@ -866,3 +845,4 @@ latex_code <- gsub(
 # Mostrar LaTeX final
 cat(latex_code)
 ```
+
