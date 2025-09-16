@@ -12,7 +12,7 @@ options = webdriver.ChromeOptions()
 driver = webdriver.Chrome(options=options)
 driver.maximize_window()
 driver.get('https://www.lpga.com/stats-and-rankings/money-and-finishes')
-time.sleep(25)  # Aumenta si hace falta
+time.sleep(25) 
 
 # Extraer HTML completo
 html = driver.page_source
@@ -44,3 +44,4 @@ if rows:
     print("CSV generado con", len(df), "jugadoras.")
 else:
     print("No se extrajeron datos de filas.")
+
