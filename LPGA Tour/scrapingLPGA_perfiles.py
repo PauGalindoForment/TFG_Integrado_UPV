@@ -14,7 +14,7 @@ url = 'https://www.lpga.com/athletes/directory'
 
 # Opciones Chrome webdriver
 options = webdriver.ChromeOptions()
-#options.add_argument('--headless')  # Descomentar si quieres usar sin interfaz gráfica
+#options.add_argument('--headless')  
 options.page_load_strategy = 'normal'
 
 driver = Chrome(options=options)
@@ -35,7 +35,7 @@ while x < max_scrolls:
     try:
         mas_jugadoras = driver.find_element(By.XPATH, "//p[text()='VIEW MORE ATHLETES']/ancestor::button")
         ActionChains(driver).move_to_element(mas_jugadoras).click(mas_jugadoras).perform()
-        time.sleep(random.randint(2, 4))  # Tiempo de espera aleatorio
+        time.sleep(random.randint(2, 4))  
         x += 1
     except:
         print("Se ha llegado al final o hubo un error al intentar hacer clic.")
@@ -68,3 +68,4 @@ print(f"CSV guardado con {len(df_perfil)} perfiles en {csv_profiles}")
 
 # Cerrar el navegador
 driver.quit()
+
